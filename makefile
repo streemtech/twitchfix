@@ -1,5 +1,5 @@
 
-.PHONY: docker main
+.PHONY: docker main dockerhub deploy standalone run
 
 main:
 	CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o twitchfix .
@@ -7,11 +7,20 @@ main:
 docker: main
 	docker build \
 	--no-cache \
-	-t twitchfix \
+	-t streemtech/twitchfix \
 	.
+
+dockerhub: docker
+	docker push streemtech/twitchfix
 
 deploy: docker
 	docker run \
-	--name twitchfix \
+	--name streemtech/twitchfix \
 	-p 8284:8284 \
 	twitchfix
+
+standalone: 
+	go build -o twitchfix .
+
+run: standalone
+	./twitchfix

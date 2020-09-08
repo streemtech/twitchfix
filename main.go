@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 
@@ -13,14 +12,10 @@ import (
 
 func main() {
 	e := echo.New()
-
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	e.Logger.SetLevel(gommon.DEBUG)
-
 	e.POST("/oauth2/token", mutateToken)
-
-	fmt.Println("Hello World")
 	e.Logger.Fatal(e.Start(":8284"))
 }
 

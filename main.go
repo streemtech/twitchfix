@@ -102,7 +102,6 @@ func makeScopes(scopes []string) string {
 	for i := 0; i < len(scopes)-1; i++ {
 		str += scopes[i] + " "
 	}
-	str += scopes[len(scopes)]
-
+	str += scopes[len(scopes)-1]
 	return str
 }

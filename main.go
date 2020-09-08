@@ -48,6 +48,7 @@ func mutateToken(c echo.Context) error {
 
 	bod := c.Request().Body
 
+	defer bod.Close()
 	//THIS MAY WORK, I Just need to set the content type.
 	resp, err := http.Post(twitchURL, "application/x-www-form-urlencoded", bod)
 	if err != nil {

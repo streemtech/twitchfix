@@ -11,7 +11,7 @@ This is **not** a library for use in other programs, only a program to act as an
 ### Docker Container
 The docker container is hosted on dockerhub, and can be run with the standard dockerish ways.
 ```
-docker run --name streemtech/twitchfix -p 8284:8284 twitchfix
+docker run --name twitchfix -p 8284:8284 streemtech/twitchfix
 ```
 The makefile also has commands to build the docker container from scratch, but the container is literally from the scratch container, so there is little difference from building standalone. Adding a second dockerfile using `from: golang` is one of the goals for the future.
 

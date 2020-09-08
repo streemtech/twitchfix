@@ -47,20 +47,24 @@ func mutateToken(c echo.Context) error {
 	//THIS MAY WORK, I Just need to set the content type.
 	resp, err := http.Post(twitchURL, "application/x-www-form-urlencoded", bod)
 	if err != nil {
+		c.Logger().Infof("Error on post to twitch: %s", err.Error())
 		return c.String(500, "error on twitch post")
 	}
 
 	if resp.StatusCode != 200 {
+		c.Logger().Infof("Unknown Twitch Status: %s", err.Error())
 		return c.String(500, "Unknown Twitch Status")
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
+		c.Logger().Infof("error on body readAll: %s", err.Error())
 		return c.String(500, "No Body On Twitch Post")
 	}
 
 	rfc, err := getRFCBody(body)
 	if err != nil {
+		c.Logger().Infof("Unable to parse the body from the twitch response: %s", err.Error())
 		return c.String(500, "Unable to parse the body from the twitch response: "+err.Error())
 	}
 

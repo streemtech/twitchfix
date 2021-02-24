@@ -1,0 +1,223 @@
+name: Tests
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  #************* RUN GO TESTS ***************
+  goTests:
+    outputs:
+      newTag: ${{ steps.bump_tag.outputs.new_tag }}
+      tagMajor: ${{ steps.semver_parser.outputs.major }}
+      tagMinor: ${{ steps.semver_parser.outputs.minor }}
+      tagPatch: ${{ steps.semver_parser.outputs.patch }}
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          token: ${{ secrets.GO_MODULES_TOKEN }}
+
+      - name: Setup git config
+        run: git config --global url."https://x-oauth-basic:${{ secrets.GO_MODULES_TOKEN }}@github.com".insteadOf "https://github.com"
+
+      - name: Setup Golang
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.15
+
+      - name: restore go cache
+        uses: actions/cache@v2
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-goTests-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-goTests-
+
+      - name: Test
+        run: go test -v ./...
+
+      - name: Bump version and push tag
+        id: bump_tag
+        uses: anothrNick/github-tag-action@1.34.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WITH_V: true
+          DEFAULT_BUMP: patch
+      - name: Parse semver string
+        id: semver_parser
+        uses: booxmedialtd/ws-action-parse-semver@v1
+        with:
+          input_string: "${{ steps.bump_tag.outputs.new_tag }}"
+          # version_extractor_regex: '\/v(.*)$'
+  #************* COMPILE RESULTS ***************
+  compile:
+    needs: goTests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        program-name: [pollster-chat, pollster-api, pollster-results]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+          token: ${{ secrets.GO_MODULES_TOKEN }}
+
+      - name: Setup git config
+        run: git config --global url."https://x-oauth-basic:${{ secrets.GO_MODULES_TOKEN }}@github.com".insteadOf "https://github.com"
+
+      - name: Setup Golang
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.15
+
+      - name: restore go cache
+        uses: actions/cache@v2
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ matrix.program-name }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ matrix.program-name }}-
+
+      - name: Compile executable
+        run: (CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .)
+
+      - name: Archive binary
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.program-name }}.binary
+          path: cmd/${{ matrix.program-name }}/main
+          retention-days: 1
+
+  #************* DOCKER FILE BUILD PUSHES***************
+  buildAndPush:
+    needs: [goTests, compile]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        program-name: [twitchfix]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+          token: ${{ secrets.GO_MODULES_TOKEN }}
+
+      - name: Setup git config
+        run: git config --global url."https://x-oauth-basic:${{ secrets.GO_MODULES_TOKEN }}@github.com".insteadOf "https://github.com"
+
+      - name: Set Up Docker Build
+        uses: docker/setup-buildx-action@v1
+        with:
+          install: true
+
+      - name: Login to Harbor
+        uses: docker/login-action@v1
+        with:
+          registry: harbor.streem.tech
+          username: ${{ secrets.HARBOR_USERNAME }}
+          password: ${{ secrets.HARBOR_PASSWORD }}
+
+      - name: Archive api binary
+        uses: actions/download-artifact@v2
+        with:
+          name: ${{ matrix.program-name }}.binary
+          path: cmd/${{ matrix.program-name }}/main
+
+      - name: Build and push API
+        uses: docker/build-push-action@v2
+        with:
+          push: true
+          tags: |
+            harbor.streem.tech/streemtech-pub/${{ matrix.program-name }}:test
+            harbor.streem.tech/streemtech-pub/${{ matrix.program-name }}:${{ needs.goTests.outputs.newTag }}
+          context: "."
+          file: dockerfile
+
+  #************* DOCKER FILE BUILD PUSHES***************
+  pushVersionedContainers:
+    strategy:
+      matrix:
+        program-name: [twitchfix]
+    needs: [goTests]
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+          token: ${{ secrets.GO_MODULES_TOKEN }}
+
+      - name: Setup git config
+        run: git config --global url."https://x-oauth-basic:${{ secrets.GO_MODULES_TOKEN }}@github.com".insteadOf "https://github.com"
+
+      - name: Set Up Docker Build
+        uses: docker/setup-buildx-action@v1
+        with:
+          install: true
+
+      - name: Login to Harbor
+        uses: docker/login-action@v1
+        with:
+          registry: harbor.streem.tech
+          username: ${{ secrets.HARBOR_USERNAME }}
+          password: ${{ secrets.HARBOR_PASSWORD }}
+
+      - name: Get Archive binary
+        uses: actions/download-artifact@v2
+        with:
+          name: ${{ matrix.program-name }}.binary
+          path: cmd/${{ matrix.program-name }}/main
+
+      - name: Build and push API
+        uses: docker/build-push-action@v2
+        with:
+          push: true
+          tags: |
+            harbor.streem.tech/streemtech-pub/${{ matrix.program-name }}:latest
+            harbor.streem.tech/streemtech-pub/${{ matrix.program-name }}:v${{ needs.goTests.outputs.tagMajor }}
+            harbor.streem.tech/streemtech-pub/${{ matrix.program-name }}:v${{ needs.goTests.outputs.tagMajor }}.${{ needs.goTests.outputs.tagMinor }}
+            harbor.streem.tech/streemtech-pub/${{ matrix.program-name }}:v${{ needs.goTests.outputs.tagMajor }}.${{ needs.goTests.outputs.tagMinor }}.${{ needs.goTests.outputs.tagPatch }}
+          context: "."
+          file: dockerfile
+
+  #************* CLEANUP JOBS ***************
+  cleanup:
+    strategy:
+      matrix:
+        program-name: [pollster-chat, pollster-api, pollster-results]
+    runs-on: ubuntu-latest
+    needs: [pushVersionedContainers]
+    if: ${{ always() }}
+    steps:
+      - name: Delete Artifacts after done.
+        uses: geekyeggo/delete-artifact@v1
+        with:
+          name: ${{ matrix.program-name }}.binary
+          failOnError: false
+
+  cleanupOnFailure:
+    strategy:
+      matrix:
+        program-name: [twitchfix]
+    runs-on: ubuntu-latest
+    needs: [goTests, pushVersionedContainers]
+    if: ${{ failure() }}
+    steps:
+      - name: cleanup Github tags
+        uses: dev-drprasad/delete-tag-and-release@v0.1.2
+        with:
+          delete_release: false # default: false
+          tag_name: ${{ needs.goTests.outputs.newTag }} # tag name to delete
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Delete Artifacts after done when failed.
+        uses: geekyeggo/delete-artifact@v1
+        with:
+          name: ${{ matrix.program-name }}.binary
+          failOnError: false

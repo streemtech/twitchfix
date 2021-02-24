@@ -27,3 +27,13 @@ standalone:
 
 run: standalone
 	./twitchfix
+
+harbor-build: main
+	docker build \
+	--no-cache \
+	-t harbor.streem.tech/streemtech-pub/twitchfix:$(VERSION) \
+	.
+
+harbor-push: harbor-build
+	docker push harbor.streem.tech/streemtech-pub/twitchfix:$(VERSION)
+
